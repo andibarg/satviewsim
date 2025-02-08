@@ -4,7 +4,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 
 from skyfield.api import EarthSatellite, Star
-from skyfield.api import load, utc
+from skyfield.api import load, utc, wgs84
 from skyfield.data import hipparcos
 
 
@@ -21,9 +21,14 @@ class SatelliteView:
                  plot_radec: bool = False) -> None:
         self.eph = ephemeris
         self.observer = satellite + self.eph['earth']
-        self.points_at = points_at
         self.utc_time = utc_time
         self.plot_radec = plot_radec
+
+        # Check if target is geocentric object
+        if points_at.center == 399:
+            self.points_at = points_at + self.eph['earth']
+        else:
+            self.points_at = points_at
 
 
     @property
@@ -177,9 +182,6 @@ if __name__ == "__main__":
     # Time in UTC
     utc_time = datetime(2025, 2, 4, 19, 0)
 
-    # Load JPL planetary and lunar ephemeris DE440
-    eph = load('de440.bsp')
-
     # Satellite name and two line element
     satellite_name = 'METEOSAT 12 (MTG I1)'
     satellite_tle = '''1 54743U 22170C   25021.33313354  .00000011  00000-0  00000-0 0  9992
@@ -191,8 +193,7 @@ if __name__ == "__main__":
 
     # Create view instance
     view = SatelliteView(satellite=sat,
-                         points_at=eph['earth'],
-                         ephemeris=eph)
+                         points_at=wgs84.latlon(0,0))
     view.utc_time = utc_time
 
     # Plot
