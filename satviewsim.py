@@ -54,7 +54,7 @@ class SatelliteView:
         '''
         ra, dec, _ = position.radec()
         if self.plot_radec:
-            return ra._degrees, dec.degrees
+            return np.array([ra._degrees, dec.degrees])
         else:
             xangle_deg = np.mod(-ra._degrees+self.radec0[0]._degrees+180, 360)-180
             yangle_deg = np.mod(dec.degrees-self.radec0[1].degrees+90,180)-90
@@ -120,7 +120,7 @@ class SatelliteView:
 
 
     def plot_stars(self,
-                   max_star_size=100,
+                   max_star_size=150,
                    *args,
                    **kwargs) -> None:
         '''
@@ -223,7 +223,7 @@ class SatelliteView:
         earth_poly = scipy.spatial.ConvexHull(grid_angle[:,is_earth].T)
         overlay_poly = scipy.spatial.ConvexHull(grid_angle[:,is_overlay].T)
 
-        # Plot polygons
+        # Plot polygons of earth and overlay (sunlit/shade)
         if subpoint_sunlit:
             EARTH_COLORS = EARTH_COLORS[::-1]
         plt.fill(earth_poly.points[earth_poly.vertices,0],
@@ -241,7 +241,6 @@ class SatelliteView:
         plt.axis('equal')
         plt.xlabel('Horizontal observation angle (°)')
         plt.ylabel('Vertical observation angle (°)')
-        plt.xlim(-180,180)
         plt.title(f"{self.satellite.name}, {self.t.utc_strftime()}") 
         
 
@@ -254,6 +253,11 @@ class SatelliteView:
         self.plot_sun_moon()
         self.plot_planets()
         self.plot_earth()
+
+        # Legend
+        box = plt.gca().get_position()
+        plt.gca().set_position([box.x0, box.y0, box.width * 0.9, box.height])
+        plt.legend(loc='center left', bbox_to_anchor=(1.01, 0.5))
 
 
 if __name__ == "__main__":
@@ -272,37 +276,13 @@ if __name__ == "__main__":
 
     # Create view instance
     view = SatelliteView(satellite=sat,
-                         points_at=wgs84.latlon(0,0))
-    view.utc_time = utc_time
-
-
-
-##    earth_grid = np.meshgrid(np.arange(-90,90),np.arange(-180,180))
-##    grid_angle, sunlit = view.approx_angle_latlon(earth_grid[0].flatten(),earth_grid[1].flatten())
-##
-##    # Check if subpoint is sunlit
-##    subpoint_latlon = wgs84.latlon_of(view.earth.at(view.t).observe(view.observer))
-##    _ , sp_sunlit = view.approx_angle_latlon(subpoint_latlon[0].degrees,
-##                                             subpoint_latlon[1].degrees,False)
-##
-##    # Create polygons
-##    is_nan = ~np.isnan(grid_angle[0,:])
-##    earth_poly = scipy.spatial.ConvexHull(grid_angle[:,is_nan].T)
-##    
-##
-##    plt.fill(earth_poly.points[earth_poly.vertices,0],
-##            earth_poly.points[earth_poly.vertices,1])
-
-    
+                         points_at=wgs84.latlon(0,0),
+                         utc_time=utc_time)
 
     # Plot
     plt.style.use('dark_background')
-    fig = plt.figure(figsize=(12,8))
     view.plot_all()
-
-    # Legend
-    box = plt.gca().get_position()
-    plt.gca().set_position([box.x0, box.y0, box.width * 0.9, box.height])
-    plt.legend(loc='center left', bbox_to_anchor=(1.01, 0.5))
+    plt.xlim(-30,30)
+    plt.ylim(-20,20)
 
     plt.show()
