@@ -3,6 +3,7 @@ import numpy as np
 from datetime import datetime
 import scipy.spatial
 import matplotlib.pyplot as plt
+import geopandas
 
 from skyfield.api import EarthSatellite, Star
 from skyfield.api import load, utc, wgs84
@@ -46,6 +47,7 @@ class SatelliteView:
         # Get right ascension and declination of pointing target
         ra0, dec0, _ = self.observer.at(self.t).observe(self.points_at).apparent().radec()
         return ra0, dec0
+
 
     def angle_from(self,position):
         '''
@@ -120,16 +122,14 @@ class SatelliteView:
 
 
     def plot_stars(self,
-                   max_star_size=150,
-                   *args,
-                   **kwargs) -> None:
+                   max_star_size=150) -> None:
         '''
         Plot stars as a function of observation angle.
         The marker sizes are set by the magnitudes of the stars.
         '''
         # Load star catalog
         if not hasattr(self,'df_stars'):
-            self.load_stars(*args, **kwargs)
+            self.load_stars()
         
         # Get observation angle from satellite of stars
         stars = Star.from_dataframe(self.df_stars)
@@ -140,7 +140,6 @@ class SatelliteView:
 
         plt.scatter(*stars_angle, s=marker_size,
                     color='w', marker='$✴$', linewidths=0, label='Stars')
-        self.plot_configs()
 
 
     def plot_sun_moon(self) -> None:
@@ -166,7 +165,6 @@ class SatelliteView:
             circle = plt.Circle(obj_angle, circle_r, color=f'C{ii:02d}')
             plt.gca().add_patch(circle)
             ii += 1
-        self.plot_configs()
 
 
     def plot_planets(self) -> None:
@@ -189,16 +187,37 @@ class SatelliteView:
             planet_angle = self.angle_celestial(planet)
 
             # Plot planet as marker
-            plt.plot(*planet_angle, marker=marker, ls='', ms=12, label=name)
-        self.plot_configs()
+            plt.plot(*planet_angle, marker=marker, ls='', ms=12,
+                     label=name,zorder=1)
+
         
+    def load_coast(self,
+                   URL = "http://d2ad6b4ur7yvpq.cloudfront.net" +
+                         "/naturalearth-3.3.0/ne_110m_land.geojson"):
+        '''
+        Load coastlines and extract latitudes and longitudes.
+        '''
+        # Load coastlines
+        df_coasts = geopandas.read_file(URL)
+
+        # Get coastline coordinates and combine
+        self.coast_lon = []
+        self.coast_lat = []
+        for ii, row in df_coasts.iterrows():
+            self.coast_lon.extend(row.geometry.exterior.xy[0])
+            self.coast_lat.extend(row.geometry.exterior.xy[1])
+            self.coast_lon.append(np.nan)
+            self.coast_lat.append(np.nan)
+        
+        return self.coast_lat, self.coast_lat
+
 
     def plot_earth(self) -> None:
         '''
         Plot earth as a function of observation angle.
         '''
         # Define colors for earth polygons
-        EARTH_COLORS = ['#040404','C04']
+        EARTH_COLORS = ['#040404','#203080']
         
         # Create a fine grid on Earth
         earth_grid = np.meshgrid(np.arange(-90,90),np.arange(-180,180))
@@ -233,26 +252,29 @@ class SatelliteView:
                  overlay_poly.points[overlay_poly.vertices,1],
                  color=EARTH_COLORS[1])
 
+        # Load coastlines and get angles
+        if not hasattr(self,'coast_lat'):
+            self.load_coast()
+        coast_angle, _ = self.approx_angle_latlon(self.coast_lat, self.coast_lon)
 
-    def plot_configs(self) -> None:
+        # Plot coastlines
+        plt.plot(*coast_angle,'-',color='gray')
+        
+
+    def plot_all(self) -> None:
         '''
-        Set common plot configurations
+        Plot all celestial objects as a function of observation angle.
         '''
+        self.plot_stars()
+        self.plot_sun_moon()
+        self.plot_planets()
+        self.plot_earth()
+
+        # Plot settings
         plt.axis('equal')
         plt.xlabel('Horizontal observation angle (°)')
         plt.ylabel('Vertical observation angle (°)')
         plt.title(f"{self.satellite.name}, {self.t.utc_strftime()}") 
-        
-
-    def plot_all(self,
-                 star_catalog_url: str = hipparcos.URL) -> None:
-        '''
-        Plot all celestial objects as a function of observation angle.
-        '''
-        self.plot_stars(catalog_url=star_catalog_url)
-        self.plot_sun_moon()
-        self.plot_planets()
-        self.plot_earth()
 
         # Legend
         box = plt.gca().get_position()
@@ -278,11 +300,14 @@ if __name__ == "__main__":
     view = SatelliteView(satellite=sat,
                          points_at=wgs84.latlon(0,0),
                          utc_time=utc_time)
+##    view.load_stars('hip_main.dat')
+##    view.load_coast('ne_110m_land.geojson')
 
     # Plot
     plt.style.use('dark_background')
+    fig = plt.figure(figsize=(12,8))
     view.plot_all()
-    plt.xlim(-30,30)
-    plt.ylim(-20,20)
+    plt.xlim(-20,20)
+    plt.ylim(-12,12)
 
     plt.show()
