@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 from datetime import datetime
+import scipy.spatial
 import matplotlib.pyplot as plt
 
 from skyfield.api import EarthSatellite, Star
@@ -20,13 +21,15 @@ class SatelliteView:
                  ephemeris = load('de440.bsp'),
                  plot_radec: bool = False) -> None:
         self.eph = ephemeris
-        self.observer = satellite + self.eph['earth']
+        self.earth = self.eph['earth']
+        self.satellite = satellite
+        self.observer = satellite + self.earth
         self.utc_time = utc_time
         self.plot_radec = plot_radec
 
         # Check if target is geocentric object
         if points_at.center == 399:
-            self.points_at = points_at + self.eph['earth']
+            self.points_at = points_at + self.earth
         else:
             self.points_at = points_at
 
@@ -55,7 +58,7 @@ class SatelliteView:
         else:
             xangle_deg = np.mod(-ra._degrees+self.radec0[0]._degrees+180, 360)-180
             yangle_deg = np.mod(dec.degrees-self.radec0[1].degrees+90,180)-90
-            return xangle_deg, yangle_deg
+            return np.array([xangle_deg, yangle_deg])
 
 
     def angle_celestial(self,target):
@@ -68,15 +71,28 @@ class SatelliteView:
         return self.angle_from(pos)
 
 
-    def approx_angle_latlon(self, latitude, longitude):
+    def approx_angle_latlon(self, latitude, longitude,
+                            remove_behind_earth=True):
         '''
         Calculate the approx. observation angle (or right ascension/declination)
         of latitude and longitude on Earth in degrees.
         '''
-        target = (wgs84.latlon(latitude, longitude)+self.eph['earth'])
+        target = (wgs84.latlon(latitude, longitude)+self.earth)
         pos = (target-self.observer).at(self.t) # Currently requires small modification of skyfield code to enable broadcasting!
+        pos_angle = self.angle_from(pos)
 
-        return self.angle_from(pos)
+        # Remove locations behind earth
+        Re = wgs84.radius.km
+        if remove_behind_earth:
+            behind_earth = self.km_to(target)**2 > self.km_to(self.earth)**2 - Re**2
+            for ii in range(2):
+                pos_angle[ii][behind_earth] = np.nan
+
+        # Check if locations are sunlit
+        sun = self.eph['sun']
+        sunlit = self.km_to(self.earth,sun)**2-Re**2 < self.km_to(target,sun)**2 
+
+        return pos_angle, sunlit
 
 
     def km_to(self,target,observer=None) -> float:
@@ -175,6 +191,47 @@ class SatelliteView:
             # Plot planet as marker
             plt.plot(*planet_angle, marker=marker, ls='', ms=12, label=name)
         self.plot_configs()
+        
+
+    def plot_earth(self) -> None:
+        '''
+        Plot earth as a function of observation angle.
+        '''
+        # Define colors for earth polygons
+        EARTH_COLORS = ['#040404','C04']
+        
+        # Create a fine grid on Earth
+        earth_grid = np.meshgrid(np.arange(-90,90),np.arange(-180,180))
+
+        # Loop for latitudes and longitudes
+        for kk in range(2):
+            grid_angle, sunlit = self.approx_angle_latlon(earth_grid[kk].flatten(),
+                                                          earth_grid[1-kk].flatten())
+
+            # Plot
+            plt.plot(*grid_angle[:,earth_grid[1].flatten()%10 == 0],
+                     '-',color='gray',alpha=0.25)
+
+        # Check if subpoint is sunlit
+        subpoint_latlon = wgs84.latlon_of(view.earth.at(view.t).observe(view.observer))
+        _ , subpoint_sunlit = view.approx_angle_latlon(subpoint_latlon[0].degrees,
+                                                       subpoint_latlon[1].degrees,False)
+
+        # Create polygons
+        is_earth = ~np.isnan(grid_angle[0,:])
+        is_overlay = is_earth * (subpoint_sunlit == sunlit)
+        earth_poly = scipy.spatial.ConvexHull(grid_angle[:,is_earth].T)
+        overlay_poly = scipy.spatial.ConvexHull(grid_angle[:,is_overlay].T)
+
+        # Plot polygons
+        if subpoint_sunlit:
+            EARTH_COLORS = EARTH_COLORS[::-1]
+        plt.fill(earth_poly.points[earth_poly.vertices,0],
+                 earth_poly.points[earth_poly.vertices,1],
+                 color=EARTH_COLORS[0])
+        plt.fill(overlay_poly.points[overlay_poly.vertices,0],
+                 overlay_poly.points[overlay_poly.vertices,1],
+                 color=EARTH_COLORS[1])
 
 
     def plot_configs(self) -> None:
@@ -185,16 +242,18 @@ class SatelliteView:
         plt.xlabel('Horizontal observation angle (°)')
         plt.ylabel('Vertical observation angle (°)')
         plt.xlim(-180,180)
+        plt.title(f"{self.satellite.name}, {self.t.utc_strftime()}") 
         
 
-    def plot_all_celestial(self,
-                           star_catalog_url: str = hipparcos.URL) -> None:
+    def plot_all(self,
+                 star_catalog_url: str = hipparcos.URL) -> None:
         '''
         Plot all celestial objects as a function of observation angle.
         '''
         self.plot_stars(catalog_url=star_catalog_url)
         self.plot_sun_moon()
         self.plot_planets()
+        self.plot_earth()
 
 
 if __name__ == "__main__":
@@ -208,18 +267,38 @@ if __name__ == "__main__":
 '''
 
     # Load savellite from TLE
-    sat = EarthSatellite(*satellite_tle.splitlines())
+    sat = EarthSatellite(*satellite_tle.splitlines(),
+                         satellite_name)
 
     # Create view instance
     view = SatelliteView(satellite=sat,
                          points_at=wgs84.latlon(0,0))
     view.utc_time = utc_time
 
+
+
+##    earth_grid = np.meshgrid(np.arange(-90,90),np.arange(-180,180))
+##    grid_angle, sunlit = view.approx_angle_latlon(earth_grid[0].flatten(),earth_grid[1].flatten())
+##
+##    # Check if subpoint is sunlit
+##    subpoint_latlon = wgs84.latlon_of(view.earth.at(view.t).observe(view.observer))
+##    _ , sp_sunlit = view.approx_angle_latlon(subpoint_latlon[0].degrees,
+##                                             subpoint_latlon[1].degrees,False)
+##
+##    # Create polygons
+##    is_nan = ~np.isnan(grid_angle[0,:])
+##    earth_poly = scipy.spatial.ConvexHull(grid_angle[:,is_nan].T)
+##    
+##
+##    plt.fill(earth_poly.points[earth_poly.vertices,0],
+##            earth_poly.points[earth_poly.vertices,1])
+
+    
+
     # Plot
     plt.style.use('dark_background')
     fig = plt.figure(figsize=(12,8))
-    view.plot_all_celestial()
-    plt.title(f"{satellite_name}, {view.t.utc_strftime()}") 
+    view.plot_all()
 
     # Legend
     box = plt.gca().get_position()
