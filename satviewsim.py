@@ -44,19 +44,39 @@ class SatelliteView:
         ra0, dec0, _ = self.observer.at(self.t).observe(self.points_at).apparent().radec()
         return ra0, dec0
 
-
-    def angle_of_target(self,target):
+    def angle_from(self,position):
         '''
-        Calculate observation angle (or right ascension/declination) of a target in degrees.
+        Convert target position to observation angle (or right ascension/declination)
+        in degrees.
         '''
-        pos = self.observer.at(self.t).observe(target).apparent()
-        ra, dec, _ = pos.radec()
+        ra, dec, _ = position.radec()
         if self.plot_radec:
             return ra._degrees, dec.degrees
         else:
-            xangle_deg = np.mod(-ra._degrees+self.radec0[0]._degrees+180, 360)
+            xangle_deg = np.mod(-ra._degrees+self.radec0[0]._degrees+180, 360)-180
             yangle_deg = np.mod(dec.degrees-self.radec0[1].degrees+90,180)-90
-            return xangle_deg-180, yangle_deg
+            return xangle_deg, yangle_deg
+
+
+    def angle_celestial(self,target):
+        '''
+        Calculate observation angle (or right ascension/declination) of a
+        celestial target in degrees.
+        '''
+        pos = self.observer.at(self.t).observe(target).apparent()
+
+        return self.angle_from(pos)
+
+
+    def approx_angle_latlon(self, latitude, longitude):
+        '''
+        Calculate the approx. observation angle (or right ascension/declination)
+        of latitude and longitude on Earth in degrees.
+        '''
+        target = (wgs84.latlon(latitude, longitude)+self.eph['earth'])
+        pos = (target-self.observer).at(self.t) # Currently requires small modification of skyfield code to enable broadcasting!
+
+        return self.angle_from(pos)
 
 
     def km_to(self,target,observer=None) -> float:
@@ -85,7 +105,6 @@ class SatelliteView:
 
     def plot_stars(self,
                    max_star_size=100,
-                   marker='$✴$', # or ✦✷,
                    *args,
                    **kwargs) -> None:
         '''
@@ -98,13 +117,13 @@ class SatelliteView:
         
         # Get observation angle from satellite of stars
         stars = Star.from_dataframe(self.df_stars)
-        stars_angle = self.angle_of_target(stars)  
+        stars_angle = self.angle_celestial(stars)  
         
         # Set marker size for stars
         marker_size = max_star_size*10**(self.df_stars.magnitude/-2.5)
 
         plt.scatter(*stars_angle, s=marker_size,
-                    color='w', marker=marker, linewidths=0, label='Stars')
+                    color='w', marker='$✴$', linewidths=0, label='Stars')
         self.plot_configs()
 
 
@@ -121,7 +140,7 @@ class SatelliteView:
         for name, info in MOON_SUN.items():
             # Get observation angle
             obj = self.eph[f'{name}']
-            obj_angle = self.angle_of_target(obj)
+            obj_angle = self.angle_celestial(obj)
 
             # Plot sun/moon as marker
             plt.plot(*obj_angle, marker=info['marker'], ls='', ms=12, label=name)
@@ -151,7 +170,7 @@ class SatelliteView:
         for name, marker in PLANETS.items():
             # Get observation angle
             planet = self.eph[f'{name}_barycenter']
-            planet_angle = self.angle_of_target(planet)
+            planet_angle = self.angle_celestial(planet)
 
             # Plot planet as marker
             plt.plot(*planet_angle, marker=marker, ls='', ms=12, label=name)
