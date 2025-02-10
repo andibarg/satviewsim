@@ -232,8 +232,8 @@ class SatelliteView:
                      '-',color='gray',alpha=0.25)
 
         # Check if subpoint is sunlit
-        subpoint_latlon = wgs84.latlon_of(view.earth.at(view.t).observe(view.observer))
-        _ , subpoint_sunlit = view.approx_angle_latlon(subpoint_latlon[0].degrees,
+        subpoint_latlon = wgs84.latlon_of(self.earth.at(self.t).observe(self.observer))
+        _ , subpoint_sunlit = self.approx_angle_latlon(subpoint_latlon[0].degrees,
                                                        subpoint_latlon[1].degrees,False)
 
         # Create polygons
