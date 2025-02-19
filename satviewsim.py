@@ -22,6 +22,8 @@ class SatelliteView:
                  utc_time: datetime = datetime.utcnow(),
                  ephemeris = None,
                  plot_radec: bool = False) -> None:
+
+        # Load arguments
         self.eph = ephemeris if ephemeris else load('de440.bsp')
         self.earth = self.eph['earth']
         self.satellite = satellite
@@ -124,8 +126,7 @@ class SatelliteView:
         return self.df_stars
 
 
-    def plot_stars(self,
-                   max_star_size=150) -> None:
+    def plot_stars(self, max_star_size: int = 150) -> None:
         '''
         Plot stars as a function of observation angle.
         The marker sizes are set by the magnitudes of the stars.
@@ -195,8 +196,8 @@ class SatelliteView:
 
         
     def load_coast(self,
-                   URL = "http://d2ad6b4ur7yvpq.cloudfront.net" +
-                         "/naturalearth-3.3.0/ne_110m_land.geojson"):
+                   URL: str = "http://d2ad6b4ur7yvpq.cloudfront.net" +
+                   "/naturalearth-3.3.0/ne_110m_land.geojson") -> None:
         '''
         Load coastlines and extract latitudes and longitudes.
         '''
