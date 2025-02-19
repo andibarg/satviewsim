@@ -8,6 +8,7 @@ import geopandas
 from skyfield.api import EarthSatellite, Star
 from skyfield.api import load, utc, wgs84
 from skyfield.data import hipparcos
+from skyfield.positionlib import ICRF
 
 
 class SatelliteView:
@@ -73,26 +74,28 @@ class SatelliteView:
         return self.angle_from(pos)
 
 
-    def approx_angle_latlon(self, latitude, longitude,
-                            remove_behind_earth=True):
+    def approx_angle_latlon(self, latitude, longitude):
         '''
         Calculate the approx. observation angle (or right ascension/declination)
         of latitude and longitude on Earth in degrees.
         '''
-        target = (wgs84.latlon(latitude, longitude)+self.earth)
-        pos = (target-self.observer).at(self.t) # Currently requires small modification of skyfield code to enable broadcasting!
+        # Get relative position between geographic position and observer
+        sat_xyz = self.satellite.at(self.t).xyz.au
+        target_xyz = wgs84.latlon(latitude, longitude).at(self.t).xyz.au
+        pos = ICRF((target_xyz.T - sat_xyz).T)
+
+        # Calculate observation angle
         pos_angle = self.angle_from(pos)
 
         # Remove locations behind earth
         Re = wgs84.radius.km
-        if remove_behind_earth:
-            behind_earth = self.km_to(target)**2 > self.km_to(self.earth)**2 - Re**2
-            for ii in range(2):
-                pos_angle[ii][behind_earth] = np.nan
+        behind_earth = pos.distance().km**2 > self.km_to(self.earth)**2 - Re**2
+        for ii in range(2):
+            pos_angle[ii][behind_earth] = np.nan
 
         # Check if locations are sunlit
         sun = self.eph['sun']
-        sunlit = self.km_to(self.earth,sun)**2-Re**2 < self.km_to(target,sun)**2 
+        sunlit = np.dot(target_xyz.T, (sun-self.earth).at(self.t).xyz.au ) < 0
 
         return pos_angle, sunlit
 
@@ -233,8 +236,8 @@ class SatelliteView:
 
         # Check if subpoint is sunlit
         subpoint_latlon = wgs84.latlon_of(self.earth.at(self.t).observe(self.observer))
-        _ , subpoint_sunlit = self.approx_angle_latlon(subpoint_latlon[0].degrees,
-                                                       subpoint_latlon[1].degrees,False)
+        _ , subpoint_sunlit = self.approx_angle_latlon([subpoint_latlon[0].degrees],
+                                                       [subpoint_latlon[1].degrees])
 
         # Create polygons
         is_earth = ~np.isnan(grid_angle[0,:])
