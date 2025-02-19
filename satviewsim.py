@@ -20,9 +20,9 @@ class SatelliteView:
                  satellite: EarthSatellite,
                  points_at,
                  utc_time: datetime = datetime.utcnow(),
-                 ephemeris = load('de440.bsp'),
+                 ephemeris = None,
                  plot_radec: bool = False) -> None:
-        self.eph = ephemeris
+        self.eph = ephemeris if ephemeris else load('de440.bsp')
         self.earth = self.eph['earth']
         self.satellite = satellite
         self.observer = satellite + self.earth
