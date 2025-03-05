@@ -152,13 +152,12 @@ class SatelliteView:
                     color='w', marker='$✴$', linewidths=0, label='Stars')
 
 
-
     def plot_solarsystem(self) -> None:
         '''
         Plot solar system function of observation angle.
         '''
         # Define markers
-        SOLAR_SYS = {
+        self.data['solarsystem'] = {
             'Moon':{'marker':'$☽$','radius_km': 1737.4},
             'Sun':{'marker':'$☉$','radius_km': 696340},
             'Mercury':{'marker':'$☿$'},
@@ -170,12 +169,9 @@ class SatelliteView:
             'Neptune':{'marker':'$♆$'}
             }
 
-        # Add to dictionary
-        self.data['solarsystem'] = SOLAR_SYS
-
-        # Loop through soslar system objects
+        # Loop through solar system objects
         ii = 0
-        for name, info in SOLAR_SYS.items():
+        for name, info in self.data['solarsystem'].items():
             # Get observation angle
             if name == 'Moon' or name == 'Sun':
                 obj = self.eph[f'{name}']
