@@ -31,6 +31,9 @@ class SatelliteView:
         self.utc_time = utc_time
         self.plot_radec = plot_radec
 
+        # Initiate data dictionary
+        self.data = {}
+
         # Check if target is geocentric object
         if points_at.center == 399:
             self.points_at = points_at + self.earth
@@ -137,62 +140,60 @@ class SatelliteView:
         
         # Get observation angle from satellite of stars
         stars = Star.from_dataframe(self.df_stars)
-        stars_angle = self.angle_celestial(stars)  
+
+        # Add to dictionary
+        self.data['stars'] = {}
+        self.data['stars']['angle'] = self.angle_celestial(stars)
+        self.data['stars']['magnitude'] = self.df_stars.magnitude
         
         # Set marker size for stars
-        marker_size = max_star_size*10**(self.df_stars.magnitude/-2.5)
-
-        plt.scatter(*stars_angle, s=marker_size,
+        marker_size = max_star_size*10**(self.data['stars']['magnitude']/-2.5)
+        plt.scatter(*self.data['stars']['angle'], s=marker_size,
                     color='w', marker='$✴$', linewidths=0, label='Stars')
 
 
-    def plot_sun_moon(self) -> None:
+
+    def plot_solarsystem(self) -> None:
         '''
-        Plot sun and moon as a function of observation angle.
+        Plot solar system function of observation angle.
         '''
         # Define markers
-        MOON_SUN = {'Moon':{'marker':'$☽$','radius_km': 1737.4},
-                    'Sun':{'marker':'$☉$','radius_km': 696340}}
+        SOLAR_SYS = {
+            'Moon':{'marker':'$☽$','radius_km': 1737.4},
+            'Sun':{'marker':'$☉$','radius_km': 696340},
+            'Mercury':{'marker':'$☿$'},
+            'Venus':{'marker':'$♀$'},
+            'Mars':{'marker':'$♂$'},
+            'Jupiter':{'marker':'$♃$'},
+            'Saturn':{'marker':"$♄$"},
+            'Uranus':{'marker':'$⛢$'},
+            'Neptune':{'marker':'$♆$'}
+            }
 
-        # Loop through moon and sun
+        # Add to dictionary
+        self.data['solarsystem'] = SOLAR_SYS
+
+        # Loop through soslar system objects
         ii = 0
-        for name, info in MOON_SUN.items():
+        for name, info in SOLAR_SYS.items():
             # Get observation angle
-            obj = self.eph[f'{name}']
-            obj_angle = self.angle_celestial(obj)
+            if name == 'Moon' or name == 'Sun':
+                obj = self.eph[f'{name}']
+            else:
+                obj = self.eph[f'{name}_barycenter']
+            self.data['solarsystem'][name]['angle'] = self.angle_celestial(obj)
+            
 
+        for name, info in self.data['solarsystem'].items():
             # Plot sun/moon as marker
-            plt.plot(*obj_angle, marker=info['marker'], ls='', ms=12, label=name)
+            plt.plot(*info['angle'], marker=info['marker'], ls='', ms=12, label=name)
 
-            # Calculate angular radius and add circle
-            circle_r = np.rad2deg(np.arctan(info['radius_km']/self.km_to(obj)))
-            circle = plt.Circle(obj_angle, circle_r, color=f'C{ii:02d}')
-            plt.gca().add_patch(circle)
+            if 'radius_km' in info:
+                # Calculate angular radius and add circle
+                circle_r = np.rad2deg(np.arctan(info['radius_km']/self.km_to(obj)))
+                circle = plt.Circle(info['angle'], circle_r)
+                plt.gca().add_patch(circle)
             ii += 1
-
-
-    def plot_planets(self) -> None:
-        '''
-        Plot planets as a function of observation angle.
-        '''
-        # Define markers
-        PLANETS = {'Mercury':'$☿$',
-                   'Venus':'$♀$',
-                   'Mars':'$♂$',
-                   'Jupiter':'$♃$',
-                   'Saturn':"$♄$",
-                   'Uranus':'$⛢$',
-                   'Neptune':'$♆$'}
-
-        # Loop through all planets
-        for name, marker in PLANETS.items():
-            # Get observation angle
-            planet = self.eph[f'{name}_barycenter']
-            planet_angle = self.angle_celestial(planet)
-
-            # Plot planet as marker
-            plt.plot(*planet_angle, marker=marker, ls='', ms=12,
-                     label=name,zorder=1)
 
         
     def load_coast(self,
@@ -222,18 +223,25 @@ class SatelliteView:
         '''
         # Define colors for earth polygons
         EARTH_COLORS = ['#040404','#203080']
+
+        # Add to dictionary
+        self.data['earth'] = {}
+        self.data['earth']['grid'] = {}
+        self.data['earth']['poly'] = {}
+        self.data['earth']['coast'] = {}
         
         # Create a fine grid on Earth
         earth_grid = np.meshgrid(np.arange(-90,90),np.arange(-180,180))
 
         # Loop for latitudes and longitudes
+        self.data['earth']['grid']['angle'] = []
         for kk in range(2):
             grid_angle, sunlit = self.approx_angle_latlon(earth_grid[kk].flatten(),
                                                           earth_grid[1-kk].flatten())
+            self.data['earth']['grid']['angle'].extend(grid_angle[:,earth_grid[1].flatten()%10 == 0])
 
-            # Plot
-            plt.plot(*grid_angle[:,earth_grid[1].flatten()%10 == 0],
-                     '-',color='gray',alpha=0.25)
+        # Plot
+        plt.plot(*self.data['earth']['grid']['angle'],'-',color='gray',alpha=0.25)
 
         # Check if subpoint is sunlit
         subpoint_latlon = wgs84.latlon_of(self.earth.at(self.t).observe(self.observer))
@@ -249,20 +257,25 @@ class SatelliteView:
         # Plot polygons of earth and overlay (sunlit/shade)
         if subpoint_sunlit:
             EARTH_COLORS = EARTH_COLORS[::-1]
-        plt.fill(earth_poly.points[earth_poly.vertices,0],
-                 earth_poly.points[earth_poly.vertices,1],
-                 color=EARTH_COLORS[0])
-        plt.fill(overlay_poly.points[overlay_poly.vertices,0],
-                 overlay_poly.points[overlay_poly.vertices,1],
-                 color=EARTH_COLORS[1])
+        
+        self.data['earth']['poly']['color'] = EARTH_COLORS
+        self.data['earth']['poly']['angle'] = [earth_poly.points[earth_poly.vertices,:].T,
+                                               overlay_poly.points[overlay_poly.vertices,:].T]
+        
+        for poly, col in zip(self.data['earth']['poly']['angle'],
+                             self.data['earth']['poly']['color']):
+            plt.fill(*poly,color=col)
+
 
         # Load coastlines and get angles
         if not hasattr(self,'coast_lat'):
             self.load_coast()
-        coast_angle, _ = self.approx_angle_latlon(self.coast_lat, self.coast_lon)
+        self.data['earth']['coast'] = {}
+        self.data['earth']['coast']['angle'], _ = self.approx_angle_latlon(self.coast_lat,
+                                                                  self.coast_lon)
 
         # Plot coastlines
-        plt.plot(*coast_angle,'-',color='gray')
+        plt.plot(*self.data['earth']['coast']['angle'],'-',color='gray')
         
 
     def plot_all(self) -> None:
@@ -270,8 +283,7 @@ class SatelliteView:
         Plot all celestial objects as a function of observation angle.
         '''
         self.plot_stars()
-        self.plot_sun_moon()
-        self.plot_planets()
+        self.plot_solarsystem()
         self.plot_earth()
 
         # Plot settings
