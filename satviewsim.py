@@ -129,7 +129,7 @@ class SatelliteView:
         return self.df_stars
 
 
-    def plot_stars(self, max_star_size: int = 150) -> None:
+    def plot_stars(self, max_star_size: int = 150, annotate = True) -> None:
         '''
         Plot stars as a function of observation angle.
         The marker sizes are set by the magnitudes of the stars.
@@ -140,16 +140,28 @@ class SatelliteView:
         
         # Get observation angle from satellite of stars
         stars = Star.from_dataframe(self.df_stars)
+        vert, horiz = self.angle_celestial(stars)
 
         # Add to dictionary
-        self.data['stars'] = {}
-        self.data['stars']['angle'] = self.angle_celestial(stars)
-        self.data['stars']['magnitude'] = self.df_stars.magnitude
+        self.data['stars'] = self.df_stars.copy()
+        self.data['stars']['vertical_degrees'] = vert
+        self.data['stars']['horizontal_degrees'] = horiz
         
         # Set marker size for stars
         marker_size = max_star_size*10**(self.data['stars']['magnitude']/-2.5)
-        plt.scatter(*self.data['stars']['angle'], s=marker_size,
+        plt.scatter(self.data['stars']['vertical_degrees'],
+                    self.data['stars']['horizontal_degrees'],
+                    s=marker_size,
                     color='w', marker='$✴$', linewidths=0, label='Stars')
+
+        if annotate:
+            # Add annotation to stars with names
+            for key, value in named_star_dict.items():
+                if value in self.data['stars'].index:
+                    plt.annotate(key,
+                                 (self.data["stars"].loc[value]["vertical_degrees"],
+                                 self.data["stars"].loc[value]["horizontal_degrees"])
+                                 )
 
 
     def plot_solarsystem(self) -> None:
@@ -323,3 +335,4 @@ if __name__ == "__main__":
     plt.ylim(-12,12)
 
     plt.show()
+
