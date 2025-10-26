@@ -9,6 +9,7 @@ from skyfield.api import EarthSatellite, Star
 from skyfield.api import load, utc, wgs84
 from skyfield.data import hipparcos
 from skyfield.positionlib import ICRF
+from skyfield.named_stars import named_star_dict
 
 
 class SatelliteView:
@@ -335,4 +336,5 @@ if __name__ == "__main__":
     plt.ylim(-12,12)
 
     plt.show()
+
 
